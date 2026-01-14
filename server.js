@@ -301,6 +301,45 @@ app.put("/order/:id/recalculate", async (req, res) => {
   }
 });
 
+// Get all vendors (simpler version for frontend dropdown)
+app.get("/vendors-dropdown", async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT id, name, phone FROM vendors ORDER BY name`);
+    res.json(result.rows); // returns [{id, name, phone}, ...]
+  } catch (err) {
+    console.error("ERROR /vendors-dropdown:", err);
+    res.status(500).json({ error: "Unable to fetch vendors" });
+  }
+});
+
+// Get all orders for a specific vendor
+app.get("/vendor-orders/:vendorId", async (req, res) => {
+  const { vendorId } = req.params;
+
+  try {
+    const data = await pool.query(`
+      SELECT 
+        c.id AS customer_id,
+        c.name AS customer_name,
+        c.phone AS customer_phone,
+        m.item_name,
+        oi.quantity
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      JOIN order_items oi ON o.id = oi.order_id
+      JOIN menu_items m ON oi.menu_item_id = m.id
+      WHERE o.vendor_id = $1
+      ORDER BY c.name
+    `, [vendorId]);
+
+    res.json(data.rows); // array of {customer_id, customer_name, customer_phone, item_name, quantity}
+  } catch (err) {
+    console.error("ERROR /vendor-orders/:vendorId:", err);
+    res.status(500).json({ error: "Unable to fetch vendor orders" });
+  }
+});
+
+
 
 /* ================= START SERVER ================= */
 
