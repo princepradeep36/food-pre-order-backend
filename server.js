@@ -213,6 +213,95 @@ app.get("/vendor-summary", async (req, res) => {
   res.json(data.rows);
 });
 
+app.put("/order/:id/payment", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE orders
+       SET payment_status = 'PAID'
+       WHERE id = $1
+       RETURNING id`,
+      [req.params.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    res.json({ success: true, extra_amount: 0 });
+
+  } catch (err) {
+    console.error("MARK PAID ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/order/:id", async (req, res) => {
+  try {
+    await pool.query("BEGIN");
+
+    await pool.query(
+      "DELETE FROM order_items WHERE order_id = $1",
+      [req.params.id]
+    );
+
+    const result = await pool.query(
+      "DELETE FROM orders WHERE id = $1 RETURNING id",
+      [req.params.id]
+    );
+
+    if (result.rowCount === 0) {
+      throw new Error("Order not found");
+    }
+
+    await pool.query("COMMIT");
+    res.json({ success: true });
+
+  } catch (err) {
+    await pool.query("ROLLBACK");
+    console.error("DELETE ORDER ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/order/item/:id", async (req, res) => {
+  const { quantity } = req.body;
+
+  try {
+    await pool.query(
+      "UPDATE order_items SET quantity = $1 WHERE id = $2",
+      [quantity, req.params.id]
+    );
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("UPDATE ITEM ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/order/:id/recalculate", async (req, res) => {
+  try {
+    await pool.query(`
+      UPDATE orders o
+      SET total = (
+        SELECT COALESCE(SUM(oi.quantity * m.price), 0)
+        FROM order_items oi
+        JOIN menu_items m ON oi.menu_item_id = m.id
+        WHERE oi.order_id = o.id
+      )
+      WHERE o.id = $1
+    `, [req.params.id]);
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("RECALCULATE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 /* ================= START SERVER ================= */
 
 const PORT = process.env.PORT || 3000;
