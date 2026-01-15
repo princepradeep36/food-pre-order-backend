@@ -62,7 +62,7 @@ app.post("/admin/menu", async (req, res) => {
 // Get Vendors + Menu
 app.get("/vendors", async (req, res) => {
   const vendors = await pool.query(`
-    SELECT v.id, v.name, v.phone, v.swish
+    SELECT v.id, v.name, v.phone, v.swish,
       COALESCE(
         json_agg(
           json_build_object(
