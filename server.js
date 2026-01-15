@@ -26,12 +26,12 @@ app.get("/health", (req, res) => {
 
 // Create Vendor
 app.post("/admin/vendor", async (req, res) => {
-  const { name, phone } = req.body;
-  if (!name || !phone) return res.status(400).send("Missing fields");
+  const { name, phone, swish } = req.body;
+  if (!name || !phone || !swish) return res.status(400).send("Missing fields");
 
   await pool.query(
-    "INSERT INTO vendors(name, phone) VALUES($1,$2)",
-    [name, phone]
+    "INSERT INTO vendors(name, phone, swish) VALUES($1,$2,$3)",
+    [name, phone, swish]
   );
 
   res.send("Vendor created");
