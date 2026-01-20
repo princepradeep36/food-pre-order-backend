@@ -8,9 +8,8 @@ const app = express();
 
 /* ================= CONFIG ================= */
 
-// Allow frontend domain (replace with your frontend URL later)
 app.use(cors({
-  origin: "*", // later you can restrict to frontend URL
+  origin: "*", 
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type"]
 }));
@@ -145,8 +144,8 @@ app.post("/order", async (req, res) => {
     cart[vendorId].items.forEach(i => total += i.price * i.quantity);
 
     const order = await pool.query(
-      `INSERT INTO orders(customer_id,vendor_id,total,payment_status)
-       VALUES($1,$2,$3,'UNPAID') RETURNING *`,
+      `INSERT INTO orders(customer_id,vendor_id,total,payment_status,delivery_status)
+       VALUES($1,$2,$3,'UNPAID','Pending') RETURNING *`,
       [customer.rows[0].id, vendorId, total]
     );
 
@@ -171,7 +170,7 @@ app.post("/order", async (req, res) => {
 // View Orders
 app.get("/orders/:phone", async (req, res) => {
   const data = await pool.query(`
-    SELECT o.id,o.total,o.payment_status,
+    SELECT o.id,o.total,o.payment_status,o.delivery_status,
            v.name AS vendor,v.phone AS vendor_phone
     FROM orders o
     JOIN customers c ON o.customer_id=c.id
@@ -195,130 +194,27 @@ app.get("/order/:id/details", async (req, res) => {
   res.json(data.rows);
 });
 
-// Vendor Summary
-app.get("/vendor-summary", async (req, res) => {
-  const data = await pool.query(`
-    SELECT v.name AS vendor_name,v.phone,
-           m.item_name,
-           SUM(oi.quantity) total_quantity,
-           SUM(oi.quantity*m.price) total_amount
-    FROM vendors v
-    LEFT JOIN orders o ON v.id=o.vendor_id
-    LEFT JOIN order_items oi ON o.id=oi.order_id
-    LEFT JOIN menu_items m ON oi.menu_item_id=m.id
-    GROUP BY v.name,v.phone,m.item_name
-    ORDER BY v.name
-  `);
+/* ================= VENDOR DASHBOARD ================= */
 
-  res.json(data.rows);
-});
-
-app.put("/order/:id/payment", async (req, res) => {
-  try {
-    const result = await pool.query(
-      `UPDATE orders
-       SET payment_status = 'PAID'
-       WHERE id = $1
-       RETURNING id`,
-      [req.params.id]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-
-    res.json({ success: true, extra_amount: 0 });
-
-  } catch (err) {
-    console.error("MARK PAID ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete("/order/:id", async (req, res) => {
-  try {
-    await pool.query("BEGIN");
-
-    await pool.query(
-      "DELETE FROM order_items WHERE order_id = $1",
-      [req.params.id]
-    );
-
-    const result = await pool.query(
-      "DELETE FROM orders WHERE id = $1 RETURNING id",
-      [req.params.id]
-    );
-
-    if (result.rowCount === 0) {
-      throw new Error("Order not found");
-    }
-
-    await pool.query("COMMIT");
-    res.json({ success: true });
-
-  } catch (err) {
-    await pool.query("ROLLBACK");
-    console.error("DELETE ORDER ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put("/order/item/:id", async (req, res) => {
-  const { quantity } = req.body;
-
-  try {
-    await pool.query(
-      "UPDATE order_items SET quantity = $1 WHERE id = $2",
-      [quantity, req.params.id]
-    );
-
-    res.json({ success: true });
-
-  } catch (err) {
-    console.error("UPDATE ITEM ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put("/order/:id/recalculate", async (req, res) => {
-  try {
-    await pool.query(`
-      UPDATE orders o
-      SET total = (
-        SELECT COALESCE(SUM(oi.quantity * m.price), 0)
-        FROM order_items oi
-        JOIN menu_items m ON oi.menu_item_id = m.id
-        WHERE oi.order_id = o.id
-      )
-      WHERE o.id = $1
-    `, [req.params.id]);
-
-    res.json({ success: true });
-
-  } catch (err) {
-    console.error("RECALCULATE ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Get all vendors (simpler version for frontend dropdown)
+// Get all vendors for dropdown
 app.get("/vendors-dropdown", async (req, res) => {
   try {
     const result = await pool.query(`SELECT id, name, phone FROM vendors ORDER BY name`);
-    res.json(result.rows); // returns [{id, name, phone}, ...]
+    res.json(result.rows);
   } catch (err) {
     console.error("ERROR /vendors-dropdown:", err);
     res.status(500).json({ error: "Unable to fetch vendors" });
   }
 });
 
-// Get all orders for a specific vendor
+// Get all orders for a specific vendor with delivery_status
 app.get("/vendor-orders/:vendorId", async (req, res) => {
   const { vendorId } = req.params;
-
   try {
     const data = await pool.query(`
       SELECT 
+        o.id AS order_id,
+        o.delivery_status,
         c.id AS customer_id,
         c.name AS customer_name,
         c.phone AS customer_phone,
@@ -329,17 +225,59 @@ app.get("/vendor-orders/:vendorId", async (req, res) => {
       JOIN order_items oi ON o.id = oi.order_id
       JOIN menu_items m ON oi.menu_item_id = m.id
       WHERE o.vendor_id = $1
-      ORDER BY c.name
+      ORDER BY o.id DESC
     `, [vendorId]);
 
-    res.json(data.rows); // array of {customer_id, customer_name, customer_phone, item_name, quantity}
+    res.json(data.rows);
   } catch (err) {
     console.error("ERROR /vendor-orders/:vendorId:", err);
     res.status(500).json({ error: "Unable to fetch vendor orders" });
   }
 });
 
+// Update Delivery Status
+app.put("/order/:id/delivery", async (req, res) => {
+  const { status } = req.body; 
+  try {
+    await pool.query(
+      "UPDATE orders SET delivery_status = $1 WHERE id = $2",
+      [status, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("UPDATE DELIVERY ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
+/* ================= PAYMENTS & MODIFICATIONS ================= */
+
+app.put("/order/:id/payment", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "UPDATE orders SET payment_status = 'PAID' WHERE id = $1 RETURNING id",
+      [req.params.id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "Order not found" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/order/:id", async (req, res) => {
+  try {
+    await pool.query("BEGIN");
+    await pool.query("DELETE FROM order_items WHERE order_id = $1", [req.params.id]);
+    const result = await pool.query("DELETE FROM orders WHERE id = $1 RETURNING id", [req.params.id]);
+    if (result.rowCount === 0) throw new Error("Order not found");
+    await pool.query("COMMIT");
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query("ROLLBACK");
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /* ================= START SERVER ================= */
 
