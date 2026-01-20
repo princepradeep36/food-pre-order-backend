@@ -148,7 +148,7 @@ const ordersCreated = [];
     const status = cart[vendorId].paid ? 'PAID' : 'UNPAID';
 
     const order = await pool.query(
-      `INSERT INTO orders(customer_id, vendor_id, total, payment_status, delivery_status)
+      `INSERT INTO orders(customer_id, vendor_id, total, payment_status, status)
        VALUES($1, $2, $3, $4, 'Pending') RETURNING *`,
       [customer.rows[0].id, vendorId, total, status]
     );
