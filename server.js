@@ -137,31 +137,23 @@ app.post("/order", async (req, res) => {
     );
   }
 
-  const ordersCreated = [];
+const ordersCreated = [];
 
   for (const vendorId in cart) {
     let total = 0;
     cart[vendorId].items.forEach(i => total += i.price * i.quantity);
 
+    // CHANGE: Get payment status from the frontend request
+    // If cart[vendorId].paid is true, save as 'PAID', otherwise 'UNPAID'
+    const status = cart[vendorId].paid ? 'PAID' : 'UNPAID';
+
     const order = await pool.query(
-      `INSERT INTO orders(customer_id,vendor_id,total,payment_status,delivery_status)
-       VALUES($1,$2,$3,'UNPAID','Pending') RETURNING *`,
-      [customer.rows[0].id, vendorId, total]
+      `INSERT INTO orders(customer_id, vendor_id, total, payment_status, delivery_status)
+       VALUES($1, $2, $3, $4, 'Pending') RETURNING *`,
+      [customer.rows[0].id, vendorId, total, status]
     );
 
-    for (const i of cart[vendorId].items) {
-      await pool.query(
-        `INSERT INTO order_items(order_id,menu_item_id,quantity)
-         VALUES($1,$2,$3)`,
-        [order.rows[0].id, i.id, i.quantity]
-      );
-    }
-
-    ordersCreated.push({
-      vendor: cart[vendorId].vendor,
-      vendor_phone: cart[vendorId].vendor_phone,
-      total
-    });
+    // ... (Keep order_items insertion logic) ...
   }
 
   res.json(ordersCreated);
