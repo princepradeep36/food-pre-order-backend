@@ -27,8 +27,9 @@ CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
     customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
     vendor_id INTEGER REFERENCES vendors(id) ON DELETE CASCADE,
-    total DECIMAL(10, 2) NOT NULL DEFAULT 0,
-    payment_status VARCHAR(20) DEFAULT 'UNPAID',
+    total DECIMAL(10, 2) NOT NULL,
+    payment_status VARCHAR(20) DEFAULT 'UNPAID', -- Can be 'UNPAID' or 'PAID'
+    delivery_status VARCHAR(20) DEFAULT 'Pending', -- Can be 'Pending' or 'Delivered'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
