@@ -108,7 +108,7 @@ app.get("/orders/:phone", async (req, res) => {
 
 app.get("/order/:id/details", async (req, res) => {
   const data = await pool.query(`
-    SELECT m.item_name, oi.quantity, m.price FROM order_items oi 
+    SELECT oi.id, m.item_name, oi.quantity, m.price FROM order_items oi 
     JOIN menu_items m ON oi.menu_item_id = m.id WHERE oi.order_id=$1`, [req.params.id]);
   res.json(data.rows);
 });
@@ -147,4 +147,70 @@ app.put("/order/:id/delivery", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+/* ================= ADMIN ORDER MANAGEMENT ================= */
+
+// Helper to recalculate order total
+async function recalcOrderTotal(orderId) {
+  const res = await pool.query(`
+    SELECT SUM(oi.quantity * m.price) as new_total
+    FROM order_items oi
+    JOIN menu_items m ON oi.menu_item_id = m.id
+    WHERE oi.order_id = $1
+  `, [orderId]);
+
+  const newTotal = res.rows[0].new_total || 0;
+  await pool.query("UPDATE orders SET total = $1 WHERE id = $2", [newTotal, orderId]);
+}
+
+app.get("/admin/orders", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT o.id, o.total, o.payment_status, o.delivery_status, o.created_at,
+             v.name AS vendor_name, c.name AS customer_name, c.phone AS customer_phone
+      FROM orders o
+      JOIN vendors v ON o.vendor_id = v.id
+      JOIN customers c ON o.customer_id = c.id
+      ORDER BY o.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) { res.status(500).send(err.message); }
+});
+
+app.delete("/admin/order/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM orders WHERE id=$1", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).send(err.message); }
+});
+
+app.delete("/admin/order-item/:id", async (req, res) => {
+  try {
+    const del = await pool.query("DELETE FROM order_items WHERE id=$1 RETURNING order_id", [req.params.id]);
+    if (del.rows.length > 0) {
+      await recalcOrderTotal(del.rows[0].order_id);
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "Item not found" });
+    }
+  } catch (err) { res.status(500).send(err.message); }
+});
+
+app.put("/admin/order-item/:id", async (req, res) => {
+  const { quantity } = req.body;
+  if (quantity < 1) return res.status(400).send("Qty must be positive");
+  try {
+    const update = await pool.query("UPDATE order_items SET quantity=$1 WHERE id=$2 RETURNING order_id", [quantity, req.params.id]);
+    if (update.rows.length > 0) {
+      await recalcOrderTotal(update.rows[0].order_id);
+      res.json({ success: true });
+    } else {
+      res.status(404).send("Item not found");
+    }
+  } catch (err) { res.status(500).send(err.message); }
+});
+
+// Reuse existing details endpoint for fetching items of an order
+// app.get("/order/:id/details") is already available and public
+
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
