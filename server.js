@@ -27,19 +27,41 @@ app.post("/admin/vendor", async (req, res) => {
 app.post("/admin/menu", async (req, res) => {
   const { vendor_id, item_name, price, max_quantity } = req.body;
   try {
-    await pool.query("INSERT INTO menu_items(vendor_id,item_name,price,max_quantity) VALUES($1,$2,$3,$4)", 
-    [vendor_id, item_name, price, max_quantity]);
+    await pool.query("INSERT INTO menu_items(vendor_id,item_name,price,max_quantity) VALUES($1,$2,$3,$4)",
+      [vendor_id, item_name, price, max_quantity]);
     res.send("Menu item added");
   } catch (err) { res.status(500).send(err.message); }
 });
 
 app.get("/vendors", async (req, res) => {
   const vendors = await pool.query(`
-    SELECT v.id, v.name, v.phone, v.swish,
-      COALESCE(json_agg(json_build_object('id', m.id, 'item_name', m.item_name, 'price', m.price, 'max_quantity', m.max_quantity)) 
-      FILTER (WHERE m.id IS NOT NULL), '[]') AS menu
-    FROM vendors v LEFT JOIN menu_items m ON v.id = m.vendor_id
-    GROUP BY v.id ORDER BY v.id`);
+    SELECT 
+      v.id, 
+      v.name, 
+      v.phone, 
+      v.swish,
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', m.id, 
+            'item_name', m.item_name, 
+            'price', m.price, 
+            'max_quantity', m.max_quantity,
+            'sold_quantity', COALESCE(sold.qty, 0)
+          ) ORDER BY m.id
+        ) FILTER (WHERE m.id IS NOT NULL), 
+        '[]'
+      ) AS menu
+    FROM vendors v 
+    LEFT JOIN menu_items m ON v.id = m.vendor_id
+    LEFT JOIN (
+      SELECT menu_item_id, SUM(quantity) as qty
+      FROM order_items
+      GROUP BY menu_item_id
+    ) sold ON m.id = sold.menu_item_id
+    GROUP BY v.id 
+    ORDER BY v.id
+  `);
   res.json(vendors.rows);
 });
 
