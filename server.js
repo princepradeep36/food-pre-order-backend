@@ -83,10 +83,6 @@ app.post("/order", async (req, res) => {
   for (const vendorId in cart) {
     let total = 0;
     cart[vendorId].items.forEach(i => total += i.price * i.quantity);
-
-    // Skip unpaid vendors
-    if (!cart[vendorId].paid) continue;
-
     const pStatus = cart[vendorId].paid ? 'PAID' : 'UNPAID';
 
     const order = await pool.query(
