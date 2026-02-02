@@ -113,6 +113,19 @@ app.get("/order/:id/details", async (req, res) => {
   res.json(data.rows);
 });
 
+app.put("/order/:id/pay", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "UPDATE orders SET payment_status = 'PAID' WHERE id = $1 RETURNING *",
+      [req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).send("Order not found");
+    res.json({ success: true, order: result.rows[0] });
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
 /* ================= VENDOR DASHBOARD ROUTES ================= */
 
 app.get("/vendors-dropdown", async (req, res) => {
@@ -126,7 +139,7 @@ app.get("/vendor-orders/:vendorId", async (req, res) => {
     FROM orders o JOIN customers c ON o.customer_id = c.id
     JOIN order_items oi ON o.id = oi.order_id
     JOIN menu_items m ON oi.menu_item_id = m.id
-    WHERE o.vendor_id = $1 ORDER BY o.id DESC`, [req.params.vendorId]);
+    WHERE o.vendor_id = $1 AND o.payment_status = 'PAID' ORDER BY o.id DESC`, [req.params.vendorId]);
   res.json(data.rows);
 });
 
@@ -136,6 +149,7 @@ app.get("/vendor-summary", async (req, res) => {
     FROM orders o JOIN vendors v ON o.vendor_id = v.id
     JOIN order_items oi ON o.id = oi.order_id
     JOIN menu_items m ON oi.menu_item_id = m.id
+    WHERE o.payment_status = 'PAID'
     GROUP BY v.id, v.name, v.phone, m.item_name`);
   res.json(data.rows);
 });
