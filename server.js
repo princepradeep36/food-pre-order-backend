@@ -14,6 +14,39 @@ app.use(cors({
 
 app.use(bodyParser.json());
 
+/* ================= AUTHENTICATION ROUTES ================= */
+
+app.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const user = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
+    if (user.rows.length === 0) return res.status(401).json({ error: "Invalid credentials" });
+
+    // In a real app, use bcrypt.compare here
+    if (user.rows[0].password !== password) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const { role, vendor_id } = user.rows[0];
+    res.json({ role, vendor_id });
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+app.post("/admin/users", async (req, res) => {
+  const { username, password, role, vendor_id } = req.body;
+  try {
+    await pool.query(
+      "INSERT INTO users(username, password, role, vendor_id) VALUES($1, $2, $3, $4)",
+      [username, password, role, vendor_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
 /* ================= ADMIN ROUTES (Crucial - Do not remove) ================= */
 
 app.post("/admin/vendor", async (req, res) => {
@@ -49,7 +82,7 @@ app.get("/vendors", async (req, res) => {
             'max_quantity', m.max_quantity,
             'sold_quantity', COALESCE(sold.qty, 0)
           ) ORDER BY m.id
-        ) FILTER (WHERE m.id IS NOT NULL), 
+        ) FILTER (WHERE m.id IS NOT NULL AND m.is_active = TRUE), 
         '[]'
       ) AS menu
     FROM vendors v 
@@ -66,9 +99,21 @@ app.get("/vendors", async (req, res) => {
 });
 
 app.delete("/admin/menu/:id", async (req, res) => {
-  await pool.query("DELETE FROM menu_items WHERE id=$1", [req.params.id]);
-  res.send("Deleted");
+  // Soft delete to preserve order history constraints
+  await pool.query("UPDATE menu_items SET is_active = FALSE WHERE id=$1", [req.params.id]);
+  res.send("Deleted (Soft)");
 });
+
+app.post("/vendor/menu", async (req, res) => {
+  const { vendor_id, item_name, price, max_quantity } = req.body;
+  try {
+    await pool.query("INSERT INTO menu_items(vendor_id,item_name,price,max_quantity) VALUES($1,$2,$3,$4)",
+      [vendor_id, item_name, price, max_quantity]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).send(err.message); }
+});
+
+/* ================= CUSTOMER & ORDER ROUTES ================= */
 
 /* ================= CUSTOMER & ORDER ROUTES ================= */
 

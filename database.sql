@@ -12,17 +12,27 @@ CREATE TABLE menu_items (
     vendor_id INTEGER REFERENCES vendors(id) ON DELETE CASCADE,
     item_name VARCHAR(255) NOT NULL,
     price DECIMAL(10, 2) NOT NULL,
-    max_quantity INTEGER DEFAULT 0
+    max_quantity INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE
 );
 
--- 3. Customers Table
+-- 3. Users Table (Authentication)
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL, -- In production, hash this!
+    role VARCHAR(20) CHECK (role IN ('admin', 'vendor')),
+    vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL
+);
+
+-- 4. Customers Table
 CREATE TABLE customers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     phone VARCHAR(50) UNIQUE NOT NULL
 );
 
--- 4. Orders Table
+-- 5. Orders Table
 CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
     customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
@@ -33,7 +43,7 @@ CREATE TABLE orders (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Order Items Table
+-- 6. Order Items Table
 CREATE TABLE order_items (
     id SERIAL PRIMARY KEY,
     order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
