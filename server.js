@@ -57,6 +57,32 @@ app.post("/admin/vendor", async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
+app.post("/admin/vendor-full", async (req, res) => {
+  const { name, phone, swish } = req.body;
+  try {
+    // 1. Create Vendor
+    const vendorRes = await pool.query(
+      "INSERT INTO vendors(name, phone, swish) VALUES($1,$2,$3) RETURNING id",
+      [name, phone, swish]
+    );
+    const vendorId = vendorRes.rows[0].id;
+
+    // 2. Generate Credentials
+    const cleanName = name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const username = `${cleanName}${randomSuffix}`;
+    const password = Math.random().toString(36).slice(-6);
+
+    // 3. Create User
+    await pool.query(
+      "INSERT INTO users(username, password, role, vendor_id) VALUES($1, $2, 'vendor', $3)",
+      [username, password, vendorId]
+    );
+
+    res.json({ success: true, username, password });
+  } catch (err) { res.status(500).send(err.message); }
+});
+
 app.post("/admin/menu", async (req, res) => {
   const { vendor_id, item_name, price, max_quantity } = req.body;
   try {
