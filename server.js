@@ -227,8 +227,35 @@ app.get("/vendor-summary", async (req, res) => {
 
 app.put("/order/:id/delivery", async (req, res) => {
   const { status } = req.body;
-  await pool.query("UPDATE orders SET delivery_status = $1 WHERE id = $2", [status, req.params.id]);
+  // If status is provided, use it. Otherwise toggle for backward compatibility if needed (though we will use explicit status now)
+  if (status) {
+    await pool.query("UPDATE orders SET delivery_status = $1 WHERE id = $2", [status, req.params.id]);
+  } else {
+    // Fallback toggle logic (Pending <-> Delivered) - strictly speaking we might not need this if frontend sends status
+    // But for safety let's just error or require status.
+    return res.status(400).json({ error: "Status is required" });
+  }
   res.json({ success: true });
+});
+
+app.put("/change-password", async (req, res) => {
+  const { vendorId, oldPassword, newPassword } = req.body;
+  try {
+    // Verify old password
+    const userRes = await pool.query("SELECT * FROM users WHERE vendor_id = $1 AND role = 'vendor'", [vendorId]);
+    if (userRes.rows.length === 0) return res.status(404).json({ error: "User not found" });
+
+    const user = userRes.rows[0];
+    if (user.password !== oldPassword) {
+       return res.status(401).json({ error: "Incorrect old password" });
+    }
+
+    // Update password
+    await pool.query("UPDATE users SET password = $1 WHERE id = $2", [newPassword, user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
 });
 
 const PORT = process.env.PORT || 3000;
