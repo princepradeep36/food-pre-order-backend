@@ -322,6 +322,16 @@ app.put("/admin/order-item/:id", async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
+app.put("/admin/order/:id/payment", async (req, res) => {
+  const { status } = req.body; // 'PAID' or 'UNPAID'
+  if (!['PAID', 'UNPAID'].includes(status)) return res.status(400).send("Invalid status");
+  
+  try {
+    await pool.query("UPDATE orders SET payment_status=$1 WHERE id=$2", [status, req.params.id]);
+    res.json({ success: true, status });
+  } catch (err) { res.status(500).send(err.message); }
+});
+
 // Reuse existing details endpoint for fetching items of an order
 // app.get("/order/:id/details") is already available and public
 
